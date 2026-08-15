@@ -13,8 +13,11 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-Then open http://localhost:8000/docs for the interactive API explorer
-(FastAPI generates this automatically — use it to test without curl/Postman).
+This starts the server on your own machine only — it's not a public
+website (see `EXPLANATION.md` for what that distinction actually means).
+Once it's running, FastAPI auto-generates an interactive testing page
+at the `/docs` route on whatever address the terminal shows — open that
+in your browser to try the endpoints without needing curl or Postman.
 
 ## Endpoints
 
@@ -81,3 +84,9 @@ now and avoids a painful migration later.
 See `DESIGN.md` for requirements, capacity estimates, and architecture
 reasoning — this is the artifact that matters most for interviews, more
 than the code itself.
+
+## What is this, actually?
+
+See `EXPLANATION.md` for a plain-language walkthrough of what `main.py`
+does line by line, and — importantly — what this project *is not* yet
+(a live public website), and what would need to be added to make it one.
