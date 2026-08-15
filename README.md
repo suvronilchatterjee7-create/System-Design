@@ -18,11 +18,18 @@ Then open http://localhost:8000/docs for the interactive API explorer
 
 ## Endpoints
 
-| Method | Path            | What it does                          |
-|--------|-----------------|----------------------------------------|
-| POST   | `/shorten`      | Takes `{"long_url": "..."}`, returns a short code |
-| GET    | `/{code}`       | Redirects to the original URL          |
-| GET    | `/stats/{code}` | Returns click count + metadata         |
+| Method | Path                       | What it does                                   |
+|--------|----------------------------|--------------------------------------------------|
+| POST   | `/v1/url`                  | Takes `{"long_url": "...", "custom_url": "..."}` (custom_url optional), returns a short code |
+| GET    | `/v1/url/{shorturl}`       | Redirects to the original URL                  |
+| GET    | `/v1/url/{shorturl}/stats` | Returns click count + metadata                 |
+
+**Why `/v1/` in the path?** This is API versioning. Once real clients
+depend on `/v1/url` behaving a certain way, we can't silently change it
+without breaking them. If the API needs to change shape later, `/v2/url`
+can run alongside `/v1/url` — old clients keep working, new clients move
+to v2 on their own schedule. Baking this in from day one costs nothing
+now and avoids a painful migration later.
 
 ## How it works
 
@@ -31,9 +38,17 @@ Then open http://localhost:8000/docs for the interactive API explorer
 2. **Encoding**: The auto-increment `id` gets converted to base62
    (0-9, a-z, A-Z = 62 characters). This is deterministic and collision-free
    by construction, since IDs are already unique. See `encoder.py`.
-3. **Dedup**: If the same long URL is shortened twice, it returns the
-   existing code instead of creating a duplicate row.
-4. **Click tracking**: Every redirect increments `click_count` — the
+3. **Custom short codes**: If the request includes `custom_url`, that
+   exact string is used as the short code instead of an auto-generated
+   one — but only after checking it isn't already taken (returns `409
+   Conflict` if it is). This is the one case where collisions genuinely
+   can happen, since the user is picking the code instead of the DB.
+4. **Dedup (auto-generated codes only)**: If the same long URL is
+   shortened twice *without* a custom code, it returns the existing code
+   instead of creating a duplicate row. This dedup rule doesn't apply to
+   custom codes — a user might reasonably want two different custom
+   aliases pointing at the same long URL.
+5. **Click tracking**: Every redirect increments `click_count` — the
    groundwork for an analytics feature later.
 
 ## Known limitations (intentional, for now)
@@ -41,16 +56,20 @@ Then open http://localhost:8000/docs for the interactive API explorer
 - **Single point of failure**: one server, one SQLite file. No replication.
 - **No caching**: every redirect hits the DB directly. Fine at low traffic,
   will not hold up at scale — SQLite in particular struggles with concurrent writes.
-- **Predictable codes**: base62-of-an-auto-increment-ID means codes are
-  sequential/guessable (`1`, `2`, `3`...). A production system would likely
-  use a random or hashed code instead, trading simplicity for unpredictability.
-- **No rate limiting**: anyone can spam `/shorten` right now.
+- **Predictable auto-generated codes**: base62-of-an-auto-increment-ID means
+  codes are sequential/guessable (`1`, `2`, `3`...) for the non-custom case.
+  A production system would likely use a random or hashed code instead,
+  trading simplicity for unpredictability.
+- **No rate limiting**: anyone can spam `/v1/url` right now.
+- **No custom_url validation**: currently accepts any string as a custom
+  code (no length limit, no character restrictions, no profanity/reserved-word
+  filtering). A real product would validate this input.
 
 ## Planned iterations (this is the "system design" part)
 
 - [ ] **v2 — Caching**: add Redis in front of the DB for the redirect
       hot path (most-read, least-written data — classic cache use case).
-- [ ] **v3 — Rate limiting**: prevent abuse of `/shorten`.
+- [ ] **v3 — Rate limiting**: prevent abuse of `/v1/url`.
 - [ ] **v4 — Horizontal scaling**: run multiple app instances behind a
       load balancer; discuss what breaks (SQLite won't work — need
       Postgres/MySQL with a real server).
